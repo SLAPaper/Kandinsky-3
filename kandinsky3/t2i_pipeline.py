@@ -55,7 +55,6 @@ class Kandinsky3T2IPipeline:
         steps: int = 50,
         seed: int | None = None,
     ) -> List[PIL.Image.Image]:
-
         if seed is not None:
             torch.manual_seed(seed)
             random.seed(seed)
@@ -100,7 +99,7 @@ class Kandinsky3T2IPipeline:
             flush()
             print_vram_usage("After T5 encoder deletion")
 
-            with torch.autocast("cuda", enabled=self.fp16, dtype=torch.bfloat16):
+            with torch.autocast("cuda"):
                 k, m = images_num // bs, images_num % bs
                 for minibatch in [bs] * k + [m]:
                     if minibatch == 0:

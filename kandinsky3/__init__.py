@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional, Union
+from typing import List, Optional, Union, cast
 
 import numpy as np
 import omegaconf
@@ -24,6 +24,7 @@ def get_T2I_unet(
     device: Union[str, torch.device],
     weights_path: Optional[str] = None,
     fp16: bool = False,
+    fp8: bool = False,
 ) -> (UNet, Optional[torch.Tensor], Optional[dict]):
     unet = UNet(
         model_channels=384,
@@ -50,10 +51,12 @@ def get_T2I_unet(
         null_embedding = state_dict["null_embedding"]
         unet.load_state_dict(state_dict["unet"])
 
-    unet.eval().to(device)
-
-    if fp16:
-        unet = unet.bfloat16()
+    if fp8:
+        unet.eval().to(cast(torch.device, device), torch.float8_e4m3fn)
+    elif fp16:
+        unet.eval().to(cast(torch.device, device), torch.bfloat16)
+    else:
+        unet.eval().to(cast(torch.device, device))
 
     return unet, null_embedding, projections_state_dict
 
@@ -175,6 +178,7 @@ def get_inpainting_unet(
 def get_T2I_pipeline(
     device: Union[str, torch.device],
     fp16: bool = False,
+    fp8: bool = False,
     cache_dir: str = "/tmp/kandinsky3/",
     unet_path: str | None = None,
     text_encode_path: str | None = None,
@@ -201,7 +205,7 @@ def get_T2I_pipeline(
     encoder_loader = lambda: get_T5encoder(
         device, text_encode_path, projections_state_dict, fp16=fp16
     )[1]
-    unet_loader = lambda: get_T2I_unet(device, unet_path, fp16=fp16)[0]
+    unet_loader = lambda: get_T2I_unet(device, unet_path, fp16=fp16, fp8=fp8)[0]
     movq_loader = lambda: get_movq(device, movq_path, fp16=fp16)
 
     flush()
