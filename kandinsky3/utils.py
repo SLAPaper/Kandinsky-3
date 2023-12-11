@@ -1,10 +1,30 @@
-from omegaconf import OmegaConf
+import gc
+import sys
+
 import numpy as np
+import torch
+import torch.nn as nn
+from matplotlib.path import Path
+from omegaconf import OmegaConf
 from scipy import ndimage
 from scipy.interpolate import interp1d
-from matplotlib.path import Path
-import torch.nn as nn
 from skimage.transform import resize
+
+
+def flush():
+    gc.collect()
+    torch.cuda.empty_cache()
+
+
+def print_vram_usage(stage: str = ""):
+    t = torch.cuda.get_device_properties(0).total_memory
+    r = torch.cuda.memory_reserved(0)
+    a = torch.cuda.memory_allocated(0)
+
+    if stage:
+        stage = f" ({stage})"
+
+    print(f"VRAM Usage{stage}: Total: {t} | Reserved: {r} | Allocated: {a}", file=sys.stderr)
 
 
 def load_conf(config_path):
@@ -27,44 +47,59 @@ def freeze(model):
         p.requires_grad = False
     return model
 
+
 def unfreeze(model):
     for p in model.parameters():
         p.requires_grad = True
     return model
+
 
 def zero_module(module):
     for p in module.parameters():
         nn.init.zeros_(p)
     return module
 
+
 def resize_mask_for_diffusion(mask):
-    reduce_factor = max(1, (mask.size / 1024**2)**0.5)
+    reduce_factor = max(1, (mask.size / 1024**2) ** 0.5)
     resized_mask = resize(
         mask,
         (
             (round(mask.shape[0] / reduce_factor) // 64) * 64,
-            (round(mask.shape[1] / reduce_factor) // 64) * 64
+            (round(mask.shape[1] / reduce_factor) // 64) * 64,
         ),
         preserve_range=True,
-        anti_aliasing=False
+        anti_aliasing=False,
     )
 
     return resized_mask
 
+
 def resize_image_for_diffusion(image):
-    reduce_factor = max(1, (image.size[0] * image.size[1] / 1024**2)**0.5)
-    image = image.resize((
-        (round(image.size[0] / reduce_factor) // 64) * 64, (round(image.size[1] / reduce_factor) // 64) * 64
-    ))
+    reduce_factor = max(1, (image.size[0] * image.size[1] / 1024**2) ** 0.5)
+    image = image.resize(
+        (
+            (round(image.size[0] / reduce_factor) // 64) * 64,
+            (round(image.size[1] / reduce_factor) // 64) * 64,
+        )
+    )
 
     return image
 
+
 def prepare_mask(mask):
-    ker = np.array([[1, 1,  1, 1, 1],
-        [1, 5,  5, 5, 1],
-        [1, 5, 44, 5, 1],
-        [1, 5,  5, 5, 1],
-        [1, 1,  1, 1, 1]]) / 100
+    ker = (
+        np.array(
+            [
+                [1, 1, 1, 1, 1],
+                [1, 5, 5, 5, 1],
+                [1, 5, 44, 5, 1],
+                [1, 5, 5, 5, 1],
+                [1, 1, 1, 1, 1],
+            ]
+        )
+        / 100
+    )
     out = ndimage.convolve(mask, ker)
     out = ndimage.convolve(out, ker)
     out = ndimage.convolve(out, ker)
